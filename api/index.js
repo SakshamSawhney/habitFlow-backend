@@ -21,6 +21,7 @@ mongoose.connect(process.env.MONGO_URI)
 .catch((error) => console.error('MongoDB Connection Error:', error));
 
 // API Routes
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/habits', habitRoutes);
 app.use('/api/friends', friendRoutes);
