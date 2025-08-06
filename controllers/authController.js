@@ -7,7 +7,7 @@ if (!process.env.JWT_SECRET) {
     process.exit(1);
 }
 
-// Helper function to generate a JWT
+// Function which help to generate a JSON WEB TOKEN
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: '30d',
