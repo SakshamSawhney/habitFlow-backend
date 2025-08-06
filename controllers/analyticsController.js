@@ -8,7 +8,6 @@ exports.getAnalytics = async (req, res) => {
         const habits = await Habit.find({ user: req.user.id });
 
         // --- Calculate Top-Level Stats ---
-        // --- completion---
         const totalCompletions = habits.reduce((acc, habit) => acc + habit.completions.length, 0);
         const completionsToday = habits.reduce((acc, habit) => {
             const todayCompletions = habit.completions.filter(c => 
@@ -28,7 +27,7 @@ exports.getAnalytics = async (req, res) => {
         });
         const averageStreak = habits.length > 0 ? Math.round(totalStreakSum / habits.length) : 0;
 
-        // --- Calculate Chart Data ---
+        // --- Calculate Chart Data fro one month ---
         // Daily Progress (Last 30 days)
         const thirtyDaysAgo = startOfDay(subDays(new Date(), 29));
         const dateInterval = eachDayOfInterval({ start: thirtyDaysAgo, end: new Date() });
