@@ -1,9 +1,13 @@
 const Habit = require('../models/Habit');
 
-// @desc    Get all habits for a user
-// @route   GET /api/habits
+/**
+ * @desc    Get all habits for the logged-in user
+ * @route   GET /api/habits
+ * @access  Private
+ */
 exports.getHabits = async (req, res) => {
   try {
+    // Find habits associated with the logged-in user
     const habits = await Habit.find({ user: req.user.id });
     res.status(200).json(habits);
   } catch (error) {
@@ -11,91 +15,126 @@ exports.getHabits = async (req, res) => {
   }
 };
 
-// @desc    Create a new habit
-// @route   POST /api/habits
+/**
+ * @desc    Create a new habit for the logged-in user
+ * @route   POST /api/habits
+ * @access  Private
+ */
 exports.createHabit = async (req, res) => {
   const { name, description, color } = req.body;
+
   try {
+    // Create a new habit document
     const habit = await Habit.create({
       name,
       description,
       color,
       user: req.user.id,
     });
+
     res.status(201).json(habit);
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
-// @desc    Update a habit
-// @route   PUT /api/habits/:id
+/**
+ * @desc    Update an existing habit (only if owned by user)
+ * @route   PUT /api/habits/:id
+ * @access  Private
+ */
 exports.updateHabit = async (req, res) => {
-    try {
-        let habit = await Habit.findById(req.params.id);
-        if (!habit) {
-            return res.status(404).json({ success: false, message: 'Habit not found' });
-        }
-        // Check if user owns the habit
-        if (habit.user.toString() !== req.user.id) {
-            return res.status(401).json({ success: false, message: 'Not authorized' });
-        }
-        habit = await Habit.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
-        });
-        res.status(200).json(habit);
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+  try {
+    // Find the habit to be updated
+    let habit = await Habit.findById(req.params.id);
+
+    if (!habit) {
+      return res.status(404).json({ success: false, message: 'Habit not found' });
     }
+
+    // Ensure the habit belongs to the logged-in user
+    if (habit.user.toString() !== req.user.id) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Update habit with new data, return updated version
+    habit = await Habit.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.status(200).json(habit);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
-// @desc    Delete a habit
-// @route   DELETE /api/habits/:id
+/**
+ * @desc    Delete a habit (only if owned by user)
+ * @route   DELETE /api/habits/:id
+ * @access  Private
+ */
 exports.deleteHabit = async (req, res) => {
-    try {
-        const habit = await Habit.findById(req.params.id);
-        if (!habit) {
-            return res.status(404).json({ success: false, message: 'Habit not found' });
-        }
-        if (habit.user.toString() !== req.user.id) {
-            return res.status(401).json({ success: false, message: 'Not authorized' });
-        }
-        // CORRECTED: Use .deleteOne() instead of the deprecated .remove()
-        await habit.deleteOne(); 
-        res.status(200).json({ success: true, data: {} });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+  try {
+    // Find habit by ID
+    const habit = await Habit.findById(req.params.id);
+
+    if (!habit) {
+      return res.status(404).json({ success: false, message: 'Habit not found' });
     }
+
+    // Authorization check
+    if (habit.user.toString() !== req.user.id) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Safely delete habit
+    await habit.deleteOne();
+
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
-// @desc    Add or remove a completion for a habit on a specific date
-// @route   POST /api/habits/:id/toggle-completion
+/**
+ * @desc    Toggle habit completion for a specific date
+ * @route   POST /api/habits/:id/toggle-completion
+ * @access  Private
+ */
 exports.toggleCompletion = async (req, res) => {
-    const { date } = req.body;
-    
-    try {
-        const habit = await Habit.findById(req.params.id);
-        if (!habit) {
-            return res.status(404).json({ success: false, message: 'Habit not found' });
-        }
-        if (habit.user.toString() !== req.user.id) {
-            return res.status(401).json({ success: false, message: 'Not authorized' });
-        }
+  const { date } = req.body;
 
-        const completionDate = new Date(date);
-        const dateIndex = habit.completions.findIndex(c => c.date.getTime() === completionDate.getTime());
+  try {
+    const habit = await Habit.findById(req.params.id);
 
-        if (dateIndex > -1) {
-            habit.completions.splice(dateIndex, 1);
-        } else {
-            habit.completions.push({ date: completionDate });
-        }
-
-        await habit.save();
-        res.status(200).json(habit);
-
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+    if (!habit) {
+      return res.status(404).json({ success: false, message: 'Habit not found' });
     }
+
+    if (habit.user.toString() !== req.user.id) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    const completionDate = new Date(date);
+
+    // Check if the date already exists in completions
+    const dateIndex = habit.completions.findIndex(
+      c => c.date.getTime() === completionDate.getTime()
+    );
+
+    if (dateIndex > -1) {
+      // If already completed, remove it (toggle off)
+      habit.completions.splice(dateIndex, 1);
+    } else {
+      // If not completed, add it (toggle on)
+      habit.completions.push({ date: completionDate });
+    }
+
+    await habit.save();
+    res.status(200).json(habit);
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
