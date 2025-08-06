@@ -8,6 +8,7 @@ exports.getAnalytics = async (req, res) => {
         const habits = await Habit.find({ user: req.user.id });
 
         // --- Calculate Top-Level Stats ---
+        // --- completion---
         const totalCompletions = habits.reduce((acc, habit) => acc + habit.completions.length, 0);
         const completionsToday = habits.reduce((acc, habit) => {
             const todayCompletions = habit.completions.filter(c => 
