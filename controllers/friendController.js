@@ -1,6 +1,6 @@
 const Friendship = require('../models/Friendship');
 const User = require('../models/User');
-const mongoose = require('mongoose'); // Import mongoose to use its ObjectId
+const mongoose = require('mongoose');
 
 exports.searchUsers = async (req, res) => {
   const query = req.query.q;
@@ -22,12 +22,8 @@ exports.searchUsers = async (req, res) => {
 exports.sendFriendRequest = async (req, res) => {
   const { recipientId } = req.body;
   
-  if (!recipientId) {
-      return res.status(400).json({ message: 'Recipient ID is required.' });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-      return res.status(400).json({ message: 'Invalid Recipient ID format.' });
+  if (!recipientId || !mongoose.Types.ObjectId.isValid(recipientId)) {
+      return res.status(400).json({ message: 'A valid Recipient ID is required.' });
   }
 
   const requesterId = req.user.id;
@@ -37,31 +33,31 @@ exports.sendFriendRequest = async (req, res) => {
   }
 
   try {
-    // 1. Check if the recipient user actually exists
     const recipientUser = await User.findById(recipientId);
     if (!recipientUser) {
         return res.status(404).json({ message: 'The user you are trying to add does not exist.' });
     }
 
-    // 2. Check for an existing friendship in any state
     const users = [requesterId, recipientId].sort();
     const existingFriendship = await Friendship.findOne({ users });
 
     if (existingFriendship) {
-      if (existingFriendship.status === 'pending') {
-        return res.status(400).json({ message: 'A friend request is already pending with this user.' });
-      }
-      if (existingFriendship.status === 'accepted') {
-        return res.status(400).json({ message: 'You are already friends with this user.' });
-      }
-      // If the status is 'declined', we can proceed to create a new request.
-      // Let's remove the old declined one to avoid conflicts.
-      if (existingFriendship.status === 'declined') {
-          await Friendship.findByIdAndDelete(existingFriendship._id);
-      }
+        // Handle all existing cases explicitly
+        switch (existingFriendship.status) {
+            case 'pending':
+                return res.status(400).json({ message: 'A friend request is already pending with this user.' });
+            case 'accepted':
+                return res.status(400).json({ message: 'You are already friends with this user.' });
+            case 'declined':
+                // If a declined request exists, we can create a new one, but let's remove the old one first.
+                await Friendship.findByIdAndDelete(existingFriendship._id);
+                break; // Proceed to create a new request
+            default:
+                return res.status(400).json({ message: 'An existing relationship with this user prevents a new request.' });
+        }
     }
 
-    // 3. Create the new friend request
+    // If we've reached here, it's safe to create a new request.
     const newFriendship = await Friendship.create({
       users,
       requester: requesterId,
@@ -72,7 +68,6 @@ exports.sendFriendRequest = async (req, res) => {
     res.status(201).json(newFriendship);
   } catch (error) {
     console.error("Send Friend Request Error:", error);
-    // This will now log the detailed error to your Vercel logs
     res.status(500).json({ message: 'An unexpected server error occurred.' });
   }
 };
