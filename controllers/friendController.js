@@ -26,38 +26,42 @@ exports.sendFriendRequest = async (req, res) => {
       return res.status(400).json({ message: 'Recipient ID is required.' });
   }
 
-  // Validate if recipientId is a valid MongoDB ObjectId
   if (!mongoose.Types.ObjectId.isValid(recipientId)) {
-      return res.status(400).json({ message: 'Invalid Recipient ID.' });
+      return res.status(400).json({ message: 'Invalid Recipient ID format.' });
   }
 
   const requesterId = req.user.id;
 
   if (requesterId === recipientId) {
-    return res.status(400).json({ message: 'Cannot send a friend request to yourself' });
+    return res.status(400).json({ message: 'You cannot send a friend request to yourself.' });
   }
 
   try {
-    // Ensure the recipient user actually exists
+    // 1. Check if the recipient user actually exists
     const recipientUser = await User.findById(recipientId);
     if (!recipientUser) {
-        return res.status(404).json({ message: 'Recipient user not found.' });
+        return res.status(404).json({ message: 'The user you are trying to add does not exist.' });
     }
 
+    // 2. Check for an existing friendship in any state
     const users = [requesterId, recipientId].sort();
     const existingFriendship = await Friendship.findOne({ users });
 
     if (existingFriendship) {
       if (existingFriendship.status === 'pending') {
-        return res.status(400).json({ message: 'A friend request is already pending.' });
+        return res.status(400).json({ message: 'A friend request is already pending with this user.' });
       }
       if (existingFriendship.status === 'accepted') {
         return res.status(400).json({ message: 'You are already friends with this user.' });
       }
+      // If the status is 'declined', we can proceed to create a new request.
+      // Let's remove the old declined one to avoid conflicts.
+      if (existingFriendship.status === 'declined') {
+          await Friendship.findByIdAndDelete(existingFriendship._id);
+      }
     }
 
-    await Friendship.findOneAndDelete({ users, status: 'declined' });
-
+    // 3. Create the new friend request
     const newFriendship = await Friendship.create({
       users,
       requester: requesterId,
@@ -68,7 +72,8 @@ exports.sendFriendRequest = async (req, res) => {
     res.status(201).json(newFriendship);
   } catch (error) {
     console.error("Send Friend Request Error:", error);
-    res.status(500).json({ message: 'Server error while sending friend request' });
+    // This will now log the detailed error to your Vercel logs
+    res.status(500).json({ message: 'An unexpected server error occurred.' });
   }
 };
 
