@@ -41,35 +41,27 @@ exports.sendFriendRequest = async (req, res) => {
     const users = [requesterId, recipientId].sort();
     
     // --- NEW, SIMPLER, AND MORE ROBUST LOGIC ---
-    let friendship = await Friendship.findOne({ users });
+    const existingFriendship = await Friendship.findOne({ users });
 
-    if (friendship) {
-        // A relationship already exists, handle based on its status
-        if (friendship.status === 'accepted') {
-            return res.status(400).json({ message: 'You are already friends with this user.' });
+    if (existingFriendship) {
+        // If a request is already pending or accepted, stop.
+        if (existingFriendship.status === 'accepted' || existingFriendship.status === 'pending') {
+            return res.status(400).json({ message: 'A friendship or pending request already exists.' });
         }
-        if (friendship.status === 'pending') {
-            return res.status(400).json({ message: 'A friend request is already pending.' });
-        }
-        if (friendship.status === 'declined') {
-            // If a previous request was declined, we can "revive" it.
-            // This is safer than deleting and recreating.
-            friendship.status = 'pending';
-            friendship.requester = requesterId;
-            friendship.recipient = recipientId;
-            await friendship.save();
-            return res.status(200).json(friendship);
-        }
-    } else {
-        // No relationship exists, so it's safe to create a new one.
-        const newFriendship = await Friendship.create({
-            users,
-            requester: requesterId,
-            recipient: recipientId,
-            status: 'pending',
-        });
-        return res.status(201).json(newFriendship);
+        // If it was declined or blocked, we remove the old record to allow a new request.
+        // This is much safer than trying to update the old record.
+        await Friendship.findByIdAndDelete(existingFriendship._id);
     }
+
+    // At this point, we are clear to create a new, clean friend request.
+    const newFriendship = await Friendship.create({
+        users,
+        requester: requesterId,
+        recipient: recipientId,
+        status: 'pending',
+    });
+
+    return res.status(201).json(newFriendship);
 
   } catch (error) {
     console.error("Send Friend Request Error:", error);
