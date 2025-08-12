@@ -39,33 +39,37 @@ exports.sendFriendRequest = async (req, res) => {
     }
 
     const users = [requesterId, recipientId].sort();
-    const existingFriendship = await Friendship.findOne({ users });
+    
+    // --- NEW, SIMPLER, AND MORE ROBUST LOGIC ---
+    let friendship = await Friendship.findOne({ users });
 
-    if (existingFriendship) {
-        // Handle all existing cases explicitly
-        switch (existingFriendship.status) {
-            case 'pending':
-                return res.status(400).json({ message: 'A friend request is already pending with this user.' });
-            case 'accepted':
-                return res.status(400).json({ message: 'You are already friends with this user.' });
-            case 'declined':
-                // If a declined request exists, we can create a new one, but let's remove the old one first.
-                await Friendship.findByIdAndDelete(existingFriendship._id);
-                break; // Proceed to create a new request
-            default:
-                return res.status(400).json({ message: 'An existing relationship with this user prevents a new request.' });
+    if (friendship) {
+        // A relationship already exists, check its status
+        if (friendship.status === 'accepted') {
+            return res.status(400).json({ message: 'You are already friends with this user.' });
         }
+        if (friendship.status === 'pending') {
+            return res.status(400).json({ message: 'A friend request is already pending.' });
+        }
+        if (friendship.status === 'declined') {
+            // If a previous request was declined, we can "revive" it by setting it back to pending.
+            friendship.status = 'pending';
+            friendship.requester = requesterId;
+            friendship.recipient = recipientId;
+            await friendship.save();
+            return res.status(200).json(friendship);
+        }
+    } else {
+        // No relationship exists, so we create a new one.
+        const newFriendship = await Friendship.create({
+            users,
+            requester: requesterId,
+            recipient: recipientId,
+            status: 'pending',
+        });
+        return res.status(201).json(newFriendship);
     }
 
-    // If we've reached here, it's safe to create a new request.
-    const newFriendship = await Friendship.create({
-      users,
-      requester: requesterId,
-      recipient: recipientId,
-      status: 'pending',
-    });
-
-    res.status(201).json(newFriendship);
   } catch (error) {
     console.error("Send Friend Request Error:", error);
     res.status(500).json({ message: 'An unexpected server error occurred.' });
